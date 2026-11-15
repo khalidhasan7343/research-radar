@@ -3,7 +3,7 @@
 `s2`         Semantic Scholar `venue` filter value
 `openalex`   search string used to resolve the OpenAlex source id (cached)
 `openreview` OpenReview v2 venue id template, where the venue uses OpenReview
-`area`       coarse field, used for filtering in the dashboard
+`area`       coarse field label, shown by `radar venues`
 """
 from __future__ import annotations
 

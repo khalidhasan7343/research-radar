@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Fixed
+
+- Openness counted open-problem papers from arXiv and from held-back venue-years
+  in its numerator but not in its denominator, inflating it for topics popular on
+  arXiv. Both now count only the topic's rich conference papers;
+  `n_open_problems` likewise.
+- `radar update --years-back N` with N > 1 read older years from the HTTP cache
+  and never found new papers in them. Every year it re-checks is now refreshed.
+- The AMI validity check compared topics against a mix of taxonomies (OpenReview
+  areas, OpenAlex topics, arXiv categories). Papers now record where their topic
+  came from (`topic_source`, added automatically to existing databases), merges
+  prefer the venue's official taxonomy, and AMI uses official topics only.
+- The landscape map subtitle no longer says "t-SNE" when another layout is used.
+- Corrected code comments that disagreed with the code (number of topics and
+  themes, theme linkage, use of the venue `area` field, where the contact email
+  is sent) and the default User-Agent URL.
+
 ## [1.0.0] - 2026-11-15
 
 First public release. Research Radar is built on

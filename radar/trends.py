@@ -187,6 +187,9 @@ def compute_trends(df: pd.DataFrame, pc: pd.DataFrame, clusters: pd.DataFrame,
     n_rich = rich.groupby("cluster").size().reindex(range(k), fill_value=0)
     if len(open_problems):
         op = open_problems[open_problems.kind.isin(["open_question", "limitation", "missing_eval"])]
+        # Count only the papers the denominator counts (rich conference papers
+        # outside held-back venue-years); arXiv papers would inflate openness.
+        op = op[op.key.isin(rich.key)]
         op_papers = op.drop_duplicates("key").groupby("cluster").size().reindex(range(k), fill_value=0)
         out["openness"] = (op_papers / n_rich.replace(0, np.nan)).round(3).to_numpy()
         out["n_open_problems"] = op.groupby("cluster").size().reindex(range(k), fill_value=0).to_numpy()

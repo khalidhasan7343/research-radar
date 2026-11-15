@@ -159,7 +159,7 @@ function whatsNew(o) {
 
 /* ----- landscape map ----- */
 pages.map = async () => {
-  main().innerHTML = `<h1>Landscape</h1><p class="sub">Every paper with an abstract, placed by meaning (t-SNE of the embeddings). Shade = opportunity score of the paper’s topic. Scroll to zoom, drag to pan, click a dot to read the paper.</p>
+  main().innerHTML = `<h1>Landscape</h1><p class="sub">Every paper with an abstract, placed by meaning (2-D projection of the embeddings). Shade = opportunity score of the paper’s topic. Scroll to zoom, drag to pan, click a dot to read the paper.</p>
     <div class="filters"><label>Theme <select id="m-theme"><option value="">All themes</option></select></label>
     <label>Year <select id="m-year"><option value="">All</option></select></label>
     <label><input type="checkbox" id="m-hl"> Orals &amp; spotlights only</label>

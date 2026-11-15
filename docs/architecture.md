@@ -59,7 +59,7 @@ pipeline (each stage replaces its tables).
 
 | Table | Written by | One row per | Main columns |
 | --- | --- | --- | --- |
-| `papers` | ingest | paper | `key`, `title`, `title_norm`, `abstract`, `authors` (JSON), `institutions` (JSON), `venue`, `year`, `presentation`, `paper_type`, `topic`, `url`, `doi`, `arxiv_id`, `citations`, `date`, `sources` (JSON) |
+| `papers` | ingest | paper | `key`, `title`, `title_norm`, `abstract`, `authors` (JSON), `institutions` (JSON), `venue`, `year`, `presentation`, `paper_type`, `topic`, `topic_source`, `url`, `doi`, `arxiv_id`, `citations`, `date`, `sources` (JSON) |
 | `meta` | various | key | `k`, `v` (JSON) |
 | `paper_cluster` | cluster | paper | `key`, `cluster`, `cluster2`, `cluster_trend`, `theme`, `confidence`, `margin`, `space`, `x`, `y` |
 | `clusters` | cluster | topic | `cluster`, `theme`, `label`, `keywords`, `size`, `representatives`, `cx`, `cy`, `summary` |
@@ -92,7 +92,14 @@ pipeline (each stage replaces its tables).
 3. Merging keeps the longer string for text fields, the longer author and
    institution lists, the higher citation count and the union of sources. When
    the existing record is a preprint and the new one is not, the venue, year and
-   paper type of the venue record win.
+   paper type of the venue record win. The `topic` is chosen by where it came
+   from (`topic_source`): an official venue taxonomy (OpenReview, RTanalysis)
+   beats other sources (such as OpenAlex), which beat arXiv categories; between
+   equals, the longer label wins.
+
+Databases created before the `topic_source` column existed are upgraded when
+they are opened (`DB._migrate`): the column is added, and papers that came from
+a single source get that source.
 
 ## Adding a venue
 

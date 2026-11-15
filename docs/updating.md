@@ -28,10 +28,9 @@ radar update
 
 1. For every tracked venue, fetches the current year and the previous year
    (`--years-back N` re-checks N earlier years) from the tracked sources
-   (OpenAlex if none are tracked). Cached responses for the current and
-   previous year are re-fetched once they are older than 5 days; older years are
-   served from the cache. This means `--years-back` values above 1 only fetch
-   pages that were never cached (see [faq.md](faq.md#known-issues)).
+   (OpenAlex if none are tracked). Cached responses for every year being
+   re-checked are re-fetched once they are older than 5 days, so new papers in
+   those years are found.
 2. For tracked arXiv categories, fetches from two days before the last date
    fetched until today (or the last 30 days the first time).
 3. If no new papers arrived and an analysis already exists, stops there (unless
@@ -113,7 +112,7 @@ need to start it again by hand.
 2. Under *Settings > Secrets and variables > Actions*:
 
    | Kind | Name | Needed | Purpose |
-   |---|---|---|---|
+   | --- | --- | --- | --- |
    | Variable | `RADAR_VENUES` | recommended | Venues to rebuild from if the cache is lost, e.g. `neurips,icml,iclr` |
    | Variable | `RADAR_YEARS` | recommended | Years to rebuild, e.g. `2023-2025` |
    | Variable | `RADAR_SOURCES` | optional | Sources for the rebuild; default `openalex,openreview` |

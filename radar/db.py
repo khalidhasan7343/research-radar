@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS papers (
     year           INTEGER NOT NULL,
     presentation   TEXT DEFAULT '',        -- oral / spotlight / poster / '' (unknown)
     paper_type     TEXT DEFAULT 'main',    -- main / position / workshop / preprint
-    topic          TEXT DEFAULT '',        -- official venue topic if any
+    topic          TEXT DEFAULT '',        -- topic label from the source (see topic_source)
+    topic_source   TEXT DEFAULT '',        -- which source `topic` came from, e.g. 'openreview'
     url            TEXT DEFAULT '',
     doi            TEXT DEFAULT '',
     arxiv_id       TEXT DEFAULT '',
@@ -43,10 +44,24 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 
 COLUMNS = [
     "key", "title", "title_norm", "abstract", "authors", "institutions", "venue",
-    "year", "presentation", "paper_type", "topic", "url", "doi", "arxiv_id",
+    "year", "presentation", "paper_type", "topic", "topic_source", "url", "doi", "arxiv_id",
     "citations", "date", "sources",
 ]
 _LIST_COLS = ("authors", "institutions", "sources")
+
+# Sources whose `topic` is the venue's own official taxonomy (OpenReview's
+# primary area; the venue topics in the RTanalysis corpus). OpenAlex topics and
+# arXiv categories are different taxonomies.
+OFFICIAL_TOPIC_SOURCES = ("openreview", "rtanalysis")
+
+
+def _topic_rank(source: str) -> int:
+    """Which topic to keep when two records merge: official > other > arXiv > none."""
+    if not source:
+        return 0
+    if source in OFFICIAL_TOPIC_SOURCES:
+        return 3
+    return 1 if source == "arxiv" else 2
 
 
 class DB:
@@ -55,6 +70,22 @@ class DB:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c) -> None:
+        """Upgrade databases created before `topic_source` existed. Where a paper
+        came from a single source, that source is its topic source; merged papers
+        stay unknown until they are ingested again."""
+        cols = {r[1] for r in c.execute("PRAGMA table_info(papers)")}
+        if "topic_source" in cols:
+            return
+        c.execute("ALTER TABLE papers ADD COLUMN topic_source TEXT DEFAULT ''")
+        rows = c.execute("SELECT key, sources FROM papers WHERE topic != ''").fetchall()
+        for key, sources in rows:
+            src = json.loads(sources or "[]")
+            if len(src) == 1:
+                c.execute("UPDATE papers SET topic_source=? WHERE key=?", (src[0], key))
 
     @contextmanager
     def conn(self):
@@ -177,8 +208,9 @@ def _prepare(p: dict, source: str) -> dict:
     out["sources"] = sorted(set(out["sources"]) | {source})
     for col in _LIST_COLS:
         out[col] = json.dumps(out[col])
-    for col in ("abstract", "presentation", "topic", "url", "doi", "arxiv_id", "date"):
+    for col in ("abstract", "presentation", "topic", "topic_source", "url", "doi", "arxiv_id", "date"):
         out[col] = (out[col] or "").strip() if isinstance(out[col], str) else (out[col] or "")
+    out["topic_source"] = (out["topic_source"] or source) if out["topic"] else ""
     out["paper_type"] = out["paper_type"] or "main"
     if out["citations"] is not None:
         out["citations"] = int(out["citations"])
@@ -188,8 +220,13 @@ def _prepare(p: dict, source: str) -> dict:
 def _merge(old: dict, new: dict) -> dict:
     m = dict(old)
     old_is_preprint = old.get("venue") == "arxiv"
+    # Keep the topic from the most authoritative taxonomy; on a tie, the
+    # longer label (the general rule below).
+    o_rank, n_rank = _topic_rank(old.get("topic_source") or ""), _topic_rank(new.get("topic_source") or "")
+    if n_rank > o_rank or (n_rank == o_rank and len(new.get("topic") or "") > len(old.get("topic") or "")):
+        m["topic"], m["topic_source"] = new.get("topic") or "", new.get("topic_source") or ""
     for k in COLUMNS:
-        if k in ("key", "sources"):
+        if k in ("key", "sources", "topic", "topic_source"):
             continue
         ov, nv = old.get(k), new.get(k)
         if k in ("venue", "year", "paper_type"):

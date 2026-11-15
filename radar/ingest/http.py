@@ -23,7 +23,7 @@ class Client:
         self.max_retries = max_retries
         self._last = 0.0
         self.s = requests.Session()
-        self.s.headers["User-Agent"] = user_agent or "research-radar/1.0 (+https://github.com)"
+        self.s.headers["User-Agent"] = user_agent or "research-radar/1.0 (+https://github.com/khalidhasan7343/research-radar)"
         if headers:
             self.s.headers.update(headers)
 

@@ -36,8 +36,9 @@ All HTTP requests go through `radar/ingest/http.py`:
 
 - **Cache.** Every response is stored in `data/cache/<source>/`. Re-running an
   ingest reads from the cache, so an interrupted crawl resumes where it stopped.
-  Responses for the current and previous year are re-fetched once they are more
-  than 5 days old; arXiv responses always are. Older responses are kept until
+  Responses for the current and previous year (and, during `radar update`, every
+  year it re-checks) are re-fetched once they are more than 5 days old; arXiv
+  responses always are. Older responses are kept until
   you delete the cache folder.
 - **Rate limiting.** A minimum interval between requests per source (below).
 - **Retries.** Up to 5 attempts with exponential back-off starting at 2 seconds

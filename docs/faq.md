@@ -56,21 +56,16 @@ anything; they are defaults you are expected to change.
 
 ## Known issues
 
-These are behaviours of the current code that you should know about:
-
-- **Openness counts more papers in the numerator than the denominator.** The
-  numerator counts papers with open-problem sentences from the whole corpus
-  (including arXiv preprints and venue-years held back as incomplete), while the
-  denominator counts only the topic's rich conference papers. In a corpus with
-  many arXiv papers, openness is inflated for topics that are popular on arXiv.
-- **`radar update --years-back N` with N > 1** re-reads years older than the
-  previous year from the HTTP cache, so it only picks up pages that were never
-  cached. To force a re-fetch of an older year, delete the corresponding cache
-  files in `data/cache/` or re-ingest after clearing the cache.
-- **AMI mixes taxonomies** when the corpus combines sources: the `topic` field
-  holds OpenReview primary areas, OpenAlex topics or arXiv categories depending
-  on where the paper came from.
-- **The map's subtitle says "t-SNE"** even when `layout` is `umap` or `pca`.
+- **Databases created before `topic_source` existed.** Opening an older
+  database adds the column automatically. Papers that came from a single source
+  get that source; papers merged from several sources are left unknown and do not
+  count towards the AMI check until they are ingested again. Re-run your
+  `radar ingest venues ...` commands (cached responses make this fast) and then
+  `radar analyze --from cluster` to get the full AMI.
+- **Ingesting an older year directly.** `radar ingest venues` re-fetches cached
+  responses only for the current and previous year. For older years it reads the
+  cache, so to pick up late additions to an old year, use
+  `radar update --years-back N` or delete the cached files in `data/cache/`.
 
 ## Common errors
 

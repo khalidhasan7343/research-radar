@@ -170,7 +170,7 @@ share(c, y) = (n(c, y) + 0.5) / N(y)
 | `impact` | mean within-venue-year citation percentile x 100, see below |
 | `median_citations` | median citation count of the topic's papers that have one |
 | `openness` | share of the topic's rich conference papers with an open-problem sentence, see below |
-| `n_open_problems` | open-problem sentences of kind `open_question`, `limitation` or `missing_eval` in the topic |
+| `n_open_problems` | open-problem sentences of kind `open_question`, `limitation` or `missing_eval` from the topic's rich conference papers |
 | `entry_cost` | mean over rich conference papers of `[EXPENSIVE matches] - [CHEAP matches]` (each 0 or 1) |
 | `entry_cost_label` | `cheap` / `moderate` / `expensive` by tertile of `entry_cost` across topics |
 | `concentration` | share of recent papers with at least one author who has 3 or more recent papers in the topic |
@@ -202,9 +202,8 @@ percentile is multiplied by 100.
 **Openness.** Numerator: distinct papers in the topic with at least one
 open-problem sentence of kind `open_question`, `limitation` or `missing_eval`
 (`future_work` is not counted). Denominator: the topic's rich conference papers.
-Note that the numerator is taken from all extracted sentences, which include
-arXiv papers and papers from held-back venue-years, while the denominator does
-not; see [faq.md](faq.md#known-issues).
+Both count only rich conference papers outside held-back venue-years, so arXiv
+preprints do not affect openness.
 
 **Entry cost.** `EXPENSIVE` matches phrases such as "pre-training", "from
 scratch", "billion-parameter", "GPU hours", "RLHF", "trillion tokens"; `CHEAP`
@@ -373,12 +372,14 @@ These are stored in the database, shown by `radar status`, printed in the
 trend report and shown at the bottom of the dashboard Overview page:
 
 - **AMI against an official taxonomy** (`cluster_info.ami_vs_official_topics`):
-  adjusted mutual information between topics and the `topic` field, when at
-  least 200 papers have one. The `topic` field holds OpenReview's
-  `primary_area`, OpenAlex's primary topic, RTanalysis's primary topic, or the
-  arXiv category list, depending on the source, so in a mixed corpus the AMI
-  compares against a mix of taxonomies. Moderate agreement is expected: topics
-  should refine the taxonomy, not copy it.
+  adjusted mutual information between topics and the venues' official topic
+  labels, when at least 200 papers have one. Each paper's `topic` field records
+  which source it came from (`topic_source`). Only official taxonomies count:
+  OpenReview's `primary_area` and the venue topics in the RTanalysis corpus.
+  OpenAlex topics and arXiv categories are stored but left out, because they are
+  different taxonomies. When the same paper arrives from several sources, the
+  official topic is kept. Moderate agreement is expected: topics should refine
+  the taxonomy, not copy it.
 - **Title agreement** (`cluster_info.title_agreement`): share of rich papers
   whose title placement matches their abstract placement. Only computed when
   there are title-only papers.

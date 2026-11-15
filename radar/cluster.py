@@ -7,7 +7,8 @@ Differences from a plain UMAP+HDBSCAN run:
   cluster). Low-margin papers are *bridges* between two topics, which is
   exactly where new directions tend to come from, so they are kept and
   surfaced instead of dropped.
-* Two levels: ~40-120 fine clusters grouped into ~8-20 themes.
+* Two levels: fine clusters (automatic: 12-150, from corpus size) grouped
+  into themes (automatic: 4-8).
 * Title-only papers (older years) are assigned in title space (see embed.py).
 * Labels are c-TF-IDF keyphrases with redundancy removed, optionally rewritten
   by an LLM.
@@ -168,7 +169,7 @@ def run_clustering(s: Settings, df: pd.DataFrame, full: np.ndarray, title: np.nd
         title_agreement = float((cl_trend[idx_r] == cl[idx_r]).mean())
         log(f"  title-space vs abstract-space agreement on papers with abstracts: {title_agreement:.1%}")
 
-    # Themes: agglomerative clustering of centroids (cosine, average linkage).
+    # Themes: agglomerative clustering of centroids.
     n_themes = s.n_themes or int(np.clip(round(k / 8), 4, 8))
     n_themes = min(n_themes, k)
     # Ward on unit vectors ~ cosine, and gives balanced themes (average linkage
@@ -237,10 +238,18 @@ def run_clustering(s: Settings, df: pd.DataFrame, full: np.ndarray, title: np.nd
 
 
 def topic_purity(df: pd.DataFrame, labels: np.ndarray) -> float | None:
-    """AMI against an official topic taxonomy, when the venue provides one."""
+    """AMI against the venues' official topic taxonomy, when they provide one.
+
+    Only topics from an official source (OpenReview primary areas, RTanalysis
+    venue topics) are used; OpenAlex topics and arXiv categories are different
+    taxonomies and would make the score meaningless."""
     from sklearn.metrics import adjusted_mutual_info_score
 
-    m = df["topic"].fillna("").str.len().gt(0).to_numpy() & (labels >= 0)
+    from .db import OFFICIAL_TOPIC_SOURCES
+
+    src = df["topic_source"] if "topic_source" in df else pd.Series("", index=df.index)
+    m = (df["topic"].fillna("").str.len().gt(0).to_numpy() & src.isin(OFFICIAL_TOPIC_SOURCES).to_numpy()
+         & (labels >= 0))
     if m.sum() < 200:
         return None
     return float(adjusted_mutual_info_score(df.topic[m], labels[m]))

@@ -70,6 +70,52 @@ def test_merge_rules(tmp_path):
     assert ins == 1
 
 
+def test_topic_source_prefers_official_taxonomy(tmp_path):
+    db = DB(tmp_path / "t.db")
+    db.upsert_papers([{"key": "a", "title": "Some Paper", "venue": "iclr", "year": 2025,
+                       "topic": "Machine Learning Methods and Applications"}], "openalex")
+    assert db.papers().iloc[0].topic_source == "openalex"
+    # the venue's own (shorter) area replaces OpenAlex's topic ...
+    db.upsert_papers([{"key": "b", "title": "Some paper", "venue": "iclr", "year": 2025,
+                       "topic": "optimization"}], "openreview")
+    p = db.papers().iloc[0]
+    assert (p.topic, p.topic_source) == ("optimization", "openreview")
+    # ... and is not replaced by a later, longer OpenAlex topic
+    db.upsert_papers([{"key": "c", "title": "Some paper", "venue": "iclr", "year": 2025,
+                       "topic": "A much longer OpenAlex topic label"}], "openalex")
+    p = db.papers().iloc[0]
+    assert (p.topic, p.topic_source) == ("optimization", "openreview")
+
+
+def test_old_database_gets_topic_source(tmp_path):
+    import sqlite3
+
+    from radar.db import SCHEMA
+
+    path = tmp_path / "old.db"
+    old_schema = "\n".join(line for line in SCHEMA.splitlines() if not line.strip().startswith("topic_source"))
+    with sqlite3.connect(path) as c:
+        c.executescript(old_schema)
+        assert "topic_source" not in {r[1] for r in c.execute("PRAGMA table_info(papers)")}
+        cols = "key, title, title_norm, venue, year, topic, sources"
+        c.execute(f"INSERT INTO papers ({cols}) VALUES ('p1','A','a','iclr',2025,'optimization','[\"openreview\"]')")
+        c.execute(f"INSERT INTO papers ({cols}) VALUES ('p2','B','b','iclr',2025,'theory','[\"openalex\", \"openreview\"]')")
+    db = DB(path)
+    src = dict(zip(db.papers().key, db.papers().topic_source))
+    assert src == {"p1": "openreview", "p2": ""}  # merged record: origin unknown until re-ingested
+
+
+def test_topic_purity_uses_official_topics_only():
+    from radar.cluster import topic_purity
+
+    n = 300
+    labels = np.arange(n) % 3
+    df = pd.DataFrame({"topic": [f"t{x}" for x in labels], "topic_source": ["openreview"] * n})
+    assert topic_purity(df, labels) == pytest.approx(1.0)
+    df["topic_source"] = "openalex"
+    assert topic_purity(df, labels) is None  # not the venue's taxonomy
+
+
 def test_normalize_title():
     assert normalize_title("Café: The (Über) Model!") == "cafe the uber model"
 
@@ -166,6 +212,23 @@ def test_server(analysed):
     assert c.get("/").status_code == 200
 
 
+def test_openness_counts_only_rich_conference_papers():
+    from radar.trends import compute_trends
+
+    long = "word " * 60
+    rows = [{"key": f"c{c}-{y}-{i}", "venue": "conf", "year": y, "abstract": long, "cluster": c}
+            for c in (0, 1) for y in (2024, 2025) for i in range(20)]
+    rows += [{"key": f"a{i}", "venue": "arxiv", "year": 2025, "abstract": long, "cluster": 0} for i in range(50)]
+    df = pd.DataFrame(rows).assign(presentation="", citations=None, authors=[[] for _ in rows], date="")
+    pc = df[["key", "cluster"]]
+    clusters = pd.DataFrame({"cluster": [0, 1], "theme": [0, 0], "label": ["a", "b"]})
+    # two conference papers and every arXiv paper in topic 0 admit an open problem
+    op_keys = ["c0-2025-0", "c0-2025-1"] + [f"a{i}" for i in range(50)]
+    op = pd.DataFrame({"key": op_keys, "cluster": 0, "kind": "open_question"})
+    tr, _, _ = compute_trends(df, pc, clusters, op, {"openness": 1})
+    assert tr.set_index("cluster").openness[0] == pytest.approx(2 / 40)
+
+
 def test_report(analysed, tmp_path):
     from radar.report import build_report
 
@@ -188,6 +251,51 @@ def test_cache_expiry(tmp_path):
     os.utime(path, (0, 0))  # pretend it is ancient
     c.s.get = lambda *a, **k: type("R", (), {"status_code": 200, "text": "new", "headers": {}})()
     assert c.get("https://x", {"a": 1}) == "new"
+
+
+def test_recent_from_controls_cache_refresh(tmp_path, monkeypatch):
+    from radar import ingest
+
+    s = Settings(data_dir=tmp_path / "d")
+    s.ensure_dirs()
+    db = DB(s.db_path)
+    seen = {}
+
+    def fake_fetch(client, venue, year, cache, limit, log):
+        seen[year] = client.max_age
+        return iter(())
+
+    monkeypatch.setattr(ingest, "fetch_openalex", fake_fetch)
+    ingest.ingest_venues(s, db, ["icml"], [2015], ["openalex"], log=lambda *_: None)
+    assert seen[2015] is None  # an old year is served from the cache by default
+    ingest.ingest_venues(s, db, ["icml"], [2015], ["openalex"], log=lambda *_: None, recent_from=2015)
+    assert seen[2015] == ingest.RECENT_MAX_AGE
+
+
+def test_update_refreshes_every_year_it_rechecks(tmp_path, monkeypatch):
+    from datetime import date
+
+    from radar import ingest
+    from radar.update import run_update
+
+    s = Settings(data_dir=tmp_path / "d")
+    s.ensure_dirs()
+    db = DB(s.db_path)
+    ingest.track(db, ["icml"], ["openalex"], 2020)
+    calls = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_ingest(s_, db_, venues, years, sources, **kw):
+        calls.update(years=years, **kw)
+        raise Stop
+
+    monkeypatch.setattr(ingest, "ingest_venues", fake_ingest)
+    with pytest.raises(Stop):
+        run_update(s, db, years_back=3, log=lambda *_: None)
+    this = date.today().year
+    assert calls["years"] == list(range(this - 3, this + 1)) and calls["recent_from"] == this - 3
 
 
 def test_update_detects_release_and_new_topic(tmp_path, monkeypatch):

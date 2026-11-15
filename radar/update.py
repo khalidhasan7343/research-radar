@@ -143,7 +143,10 @@ def run_update(s: Settings, db: DB, force: bool = False, years_back: int = 1, ou
     years = list(range(this - years_back, this + 1))
     if t["venues"]:
         log(f"checking {', '.join(v.upper() for v in t['venues'])} for {years[0]}–{years[-1]} via {', '.join(t['sources'])}")
-        ingest_venues(s, db, t["venues"], years, t["sources"] or ["openalex"], log=log, remember=False)
+        # Every year being re-checked must bypass old cached responses, not
+        # just the current and previous one, or --years-back > 1 finds nothing.
+        ingest_venues(s, db, t["venues"], years, t["sources"] or ["openalex"], log=log, remember=False,
+                      recent_from=years[0])
     a = t.get("arxiv")
     if a:
         start = date.fromisoformat(a["last_date"]) - timedelta(days=2) if a.get("last_date") else date.today() - timedelta(days=30)

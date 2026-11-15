@@ -42,10 +42,17 @@ def track(db: DB, venues=(), sources=(), from_year=None, arxiv_categories=None, 
 
 
 def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sources: list[str],
-                  limit: int = 0, log=print, refresh_recent: bool = True, remember: bool = True) -> dict:
+                  limit: int = 0, log=print, refresh_recent: bool = True, remember: bool = True,
+                  recent_from: int | None = None) -> dict:
     """Fetch every (venue, year) from each requested source. A source that fails
     is reported and skipped; the others still run, and cross-source duplicates
-    merge in the database."""
+    merge in the database.
+
+    Cached responses for years >= `recent_from` (default: the previous year) are
+    re-fetched once they are older than RECENT_MAX_AGE; older years are served
+    from the cache."""
+    if recent_from is None:
+        recent_from = date.today().year - 1
     stats = {}
     oa_cache = db.get_meta("openalex_sources", {}) or {}
     clients = {
@@ -59,7 +66,7 @@ def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sour
             log(f"! unknown venue '{venue}' (known: {', '.join(VENUES)})")
             continue
         for year in years:
-            recent = year >= date.today().year - 1
+            recent = year >= recent_from
             for c in clients.values():
                 c.max_age = RECENT_MAX_AGE if (recent and refresh_recent) else None
             for src in sources:

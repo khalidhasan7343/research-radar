@@ -34,7 +34,7 @@ class Settings:
     llm_api_key: str = ""  # not needed for Ollama / LM Studio
 
     # Polite crawling
-    contact_email: str = ""  # sent to OpenAlex / arXiv as recommended ("polite pool")
+    contact_email: str = ""  # sent in the User-Agent to every source (OpenAlex "polite pool", S2, OpenReview, arXiv)
     s2_api_key: str = ""  # optional Semantic Scholar key (higher rate limit)
 
     # Opportunity score weights (see trends.py). Visible and arguable on purpose.
