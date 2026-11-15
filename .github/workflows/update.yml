@@ -1,15 +1,26 @@
-# Weekly refresh: fetch new papers for every tracked venue + arXiv, re-run the
-# analysis, commit the updated database and reports, and open an issue with
-# "what's new" whenever new papers arrived (GitHub emails you about it).
+# Twice-weekly refresh: fetch new papers for every tracked venue + arXiv, re-run
+# the analysis, commit the updated reports, and open an issue with "what's new"
+# whenever new papers arrived (GitHub emails you about it).
+#
+# The paper database is NOT committed. It contains abstracts owned by their
+# authors and publishers, so it lives in the Actions cache (readable only by
+# workflows in this repository) between runs. Only reports/CHANGES.md,
+# reports/TREND_REPORT.md, reports/TREND_REPORT.html and reports/changes.json
+# are committed.
+#
+# GitHub deletes caches that have not been used for 7 days. The job runs twice
+# a week to keep the cache alive. If the cache is lost anyway, the job rebuilds
+# the database from the repository variables RADAR_VENUES and RADAR_YEARS
+# (and RADAR_SOURCES / RADAR_ARXIV if set).
 #
 # First run: Actions tab -> "Research Radar update" -> Run workflow, and fill
-# in the venues/years to start from. After that it runs every Monday.
+# in the venues/years to start from (or set the repository variables above).
 
 name: Research Radar update
 
 on:
   schedule:
-    - cron: "17 3 * * 1"   # Mondays 03:17 UTC (09:17 in Dhaka)
+    - cron: "17 3 * * 1,4"   # Mondays and Thursdays 03:17 UTC
   workflow_dispatch:
     inputs:
       venues:
@@ -56,38 +67,53 @@ jobs:
       - name: Install
         run: pip install -e .
 
-      - name: Restore HTTP cache
-        uses: actions/cache@v4
+      # data/ holds the database, embeddings and the HTTP response cache.
+      - name: Restore data from the Actions cache
+        uses: actions/cache/restore@v4
         with:
-          path: data/cache
-          key: radar-http-${{ github.run_id }}
-          restore-keys: radar-http-
+          path: data
+          key: radar-data-${{ github.run_id }}
+          restore-keys: radar-data-
 
-      - name: Restore database
+      - name: Check for an existing database
+        id: db
         run: |
-          mkdir -p data
-          if [ -f data/radar.db.gz ]; then gunzip -kf data/radar.db.gz; fi
+          if [ -f data/radar.db ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Backfill (manual runs with venues given)
         if: ${{ github.event.inputs.venues != '' && github.event.inputs.years != '' }}
         run: radar ingest venues --venues "${{ github.event.inputs.venues }}" --years "${{ github.event.inputs.years }}" --sources "${{ github.event.inputs.sources }}"
 
+      - name: Rebuild from repository variables (no cached database)
+        if: ${{ steps.db.outputs.exists != 'true' && github.event.inputs.venues == '' && vars.RADAR_VENUES != '' && vars.RADAR_YEARS != '' }}
+        run: radar ingest venues --venues "${{ vars.RADAR_VENUES }}" --years "${{ vars.RADAR_YEARS }}" --sources "${{ vars.RADAR_SOURCES || 'openalex,openreview' }}"
+
       - name: Follow arXiv (manual runs)
         if: ${{ github.event.inputs.arxiv != '' }}
         run: radar track --arxiv "${{ github.event.inputs.arxiv }}"
+
+      - name: Follow arXiv (repository variable, no cached database)
+        if: ${{ steps.db.outputs.exists != 'true' && github.event.inputs.arxiv == '' && vars.RADAR_ARXIV != '' }}
+        run: radar track --arxiv "${{ vars.RADAR_ARXIV }}"
 
       - name: Update and analyse
         run: |
           radar update ${{ github.event.inputs.force == 'true' && '--force' || '' }} | tee update.log
           radar report
 
-      - name: Commit results
+      - name: Save data to the Actions cache
+        if: ${{ always() && hashFiles('data/radar.db') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: radar-data-${{ github.run_id }}
+
+      - name: Commit reports
         id: commit
         run: |
-          gzip -kf data/radar.db
           git config user.name "research-radar-bot"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data/radar.db.gz reports/
+          git add -f reports/CHANGES.md reports/TREND_REPORT.md reports/TREND_REPORT.html reports/changes.json
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else

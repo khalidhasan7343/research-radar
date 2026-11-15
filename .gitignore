@@ -1,6 +1,23 @@
+# Paper data: never commit. The database holds abstracts owned by their
+# authors and publishers.
 data/
+*.db
+*.db.gz
+*.sqlite
+
+# Local settings (may hold API keys or your contact email)
+radar.toml
+
+# Generated reports. The GitHub Actions workflow force-adds only
+# reports/CHANGES.md, reports/TREND_REPORT.md, reports/TREND_REPORT.html and
+# reports/changes.json.
 reports/
+
+# Python
 __pycache__/
 *.egg-info/
 .pytest_cache/
-radar.toml
+.venv/
+venv/
+build/
+dist/

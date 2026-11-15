@@ -18,6 +18,8 @@ import pandas as pd
 
 from .text import sentences
 
+# Adapted from RTanalysis by Faysal Mahmud (Faysal-star),
+# https://github.com/Faysal-star/RTanalysis
 OPEN_PATTERNS = {
     "open_question": r"\b(?:remains? (?:largely |an |a |)?(?:open|unclear|unknown|unresolved|elusive|unexplored)"
                      r"|open (?:question|problem|challenge)s?|little is known|poorly understood"
@@ -35,6 +37,8 @@ _CLAIM = re.compile(r"\b(?:we argue|this (?:position )?paper argues|we contend|w
                     r"needs? to|it is time)\b", re.I)
 
 # --- method x domain lexicons ---------------------------------------------
+# Adapted from RTanalysis by Faysal Mahmud (Faysal-star),
+# https://github.com/Faysal-star/RTanalysis
 METHODS = {
     "diffusion models": r"diffusion model|denoising diffusion|score-based|diffusion",
     "flow matching": r"flow matching|rectified flow",

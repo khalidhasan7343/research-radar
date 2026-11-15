@@ -31,6 +31,8 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 
+# Adapted from RTanalysis by Faysal Mahmud (Faysal-star),
+# https://github.com/Faysal-star/RTanalysis
 EXPENSIVE = re.compile(
     r"\b(?:pre-?train(?:ing|ed)?|from scratch|billion[- ]parameter|\d+\s*b\b|70b|405b|gpu[- ]?(?:hours|days)|"
     r"large[- ]scale training|foundation model training|rlhf|continued pretraining|thousands of gpus|"

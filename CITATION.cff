@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use Research Radar, please cite it as below, and please also credit RTanalysis, which it is built on."
+type: software
+title: "Research Radar"
+abstract: "Maps a research field from conference papers: clusters papers into topics, measures trends, finds gaps, and checks research ideas against the published literature."
+authors:
+  - family-names: "Hasan"
+    given-names: "MD Khalid"
+version: "1.0.0"
+license: MIT
+repository-code: "https://github.com/khalidhasan7343/research-radar"
+keywords:
+  - research trends
+  - bibliometrics
+  - topic modeling
+references:
+  - type: software
+    title: "RTanalysis"
+    authors:
+      - family-names: "Mahmud"
+        given-names: "Faysal"
+    repository-code: "https://github.com/Faysal-star/RTanalysis"
+    notes: "Research Radar is built on RTanalysis and uses ideas and some code from it with the author's permission."
