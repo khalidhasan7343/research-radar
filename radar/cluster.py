@@ -57,13 +57,18 @@ def ctfidf_keywords(docs_by_cluster: dict[int, list[str]], top: int = 10) -> dic
 
     ids = sorted(docs_by_cluster)
     joined = [" ".join(docs_by_cluster[i]) for i in ids]
-    cv = CountVectorizer(ngram_range=(1, 3), stop_words=stopwords(), min_df=2,
-                         token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z0-9\-]+\b", max_features=200_000)
+    # Each "document" here is a whole cluster, so min_df must stay 1: a term that
+    # occurs in a single cluster is the most distinctive kind. Rare noise is
+    # removed by total frequency instead.
+    cv = CountVectorizer(ngram_range=(1, 3), stop_words=stopwords(), min_df=1,
+                         token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z0-9\-]+\b")
     try:
-        X = cv.fit_transform(joined).astype(np.float64)
+        X = cv.fit_transform(joined).astype(np.float64).tocsc()
     except ValueError:  # vocabulary empty (tiny corpus)
         return {i: [] for i in ids}
-    vocab = np.array(cv.get_feature_names_out())
+    keep = np.asarray(X.sum(0)).ravel() >= 5
+    X = X[:, keep].tocsr()
+    vocab = np.array(cv.get_feature_names_out())[keep]
     tf = X.multiply(1 / np.maximum(X.sum(1), 1)).tocsr()
     A = X.sum() / X.shape[0]
     f = np.asarray(X.sum(0)).ravel()

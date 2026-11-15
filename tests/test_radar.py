@@ -172,3 +172,55 @@ def test_report(analysed, tmp_path):
     s, db = analysed
     md, ht = build_report(db, tmp_path)
     assert "Highest opportunity" in md.read_text() and ht.read_text().startswith("<!DOCTYPE html>")
+
+
+# ------------------------------------------------------------------ updates
+def test_cache_expiry(tmp_path):
+    import os
+
+    from radar.ingest.http import Client
+
+    c = Client(tmp_path)
+    path = c._key("https://x", {"a": 1})
+    path.write_text("old")
+    assert c.get("https://x", {"a": 1}) == "old"  # kept forever by default
+    c.max_age = 60
+    os.utime(path, (0, 0))  # pretend it is ancient
+    c.s.get = lambda *a, **k: type("R", (), {"status_code": 200, "text": "new", "headers": {}})()
+    assert c.get("https://x", {"a": 1}) == "new"
+
+
+def test_update_detects_release_and_new_topic(tmp_path, monkeypatch):
+    from radar import ingest, pipeline
+    from radar.update import changes_markdown, run_update
+
+    s = Settings(data_dir=tmp_path / "d", layout="pca", n_clusters=6, embed_dim=32)
+    s.ensure_dirs()
+    db = DB(s.db_path)
+    db.upsert_papers(_corpus(), "synthetic")
+    ingest.track(db, ["icml"], ["openalex"], 2023)
+    pipeline.run(s, db, log=lambda *_: None)
+
+    rnd = random.Random(1)
+    quantum = "quantum circuit qubit error correction variational ansatz".split()
+
+    def fake_ingest(s_, db_, venues, years, sources, **kw):
+        rows = [r | {"key": "26-" + r["key"], "year": 2026, "title": r["title"] + " v2"} for r in _corpus(seed=5) if r["year"] == 2025]
+        rows += [{"key": f"q{i}", "title": " ".join(rnd.sample(quantum, 4)) + f" quantum study {i}", "venue": "conf", "year": 2026,
+                  "abstract": " ".join(rnd.choices(quantum, k=60))} for i in range(150)]
+        # a venue whose 2026 papers are only half indexed must not distort trends
+        rows += [{"key": f"o{y}-{i}", "title": f"other venue paper {y} {i} diffusion", "venue": "other", "year": y,
+                  "abstract": "diffusion model image generation denoising " * 10} for y, n in ((2025, 200), (2026, 40)) for i in range(n)]
+        return db_.upsert_papers(rows, "fake")
+
+    monkeypatch.setattr(ingest, "ingest_venues", fake_ingest)
+    ch = run_update(s, db, out_dir=tmp_path / "r", log=lambda *_: None)
+    rel = {(r["venue"], r["year"]) for r in ch["new_releases"]}
+    assert ("conf", 2026) in rel and ch["n_new_papers"] > 600
+    assert any("quantum" in t["label"] or "qubit" in t["label"] for t in ch["new_topics"]), (ch["new_topics"], db.read_table("clusters").label.tolist())
+    assert "other 2026" in db.get_meta("trend_info")["incomplete_venue_years"]
+    assert "New releases" in changes_markdown(ch) and (tmp_path / "r" / "CHANGES.md").exists()
+
+    monkeypatch.setattr(ingest, "ingest_venues", lambda *a, **k: (0, 0))
+    ch2 = run_update(s, db, out_dir=tmp_path / "r", log=lambda *_: None)
+    assert ch2.get("no_change") and len(db.get_meta("update_history")) == 2

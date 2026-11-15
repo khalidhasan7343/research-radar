@@ -131,6 +131,7 @@ radar serve</pre></div>`; return;
       <div class="card stat"><div class="v">${o.n_open_problems.toLocaleString()}</div><div class="l">admitted open problems extracted</div></div>
       <div class="card stat"><div class="v">${o.n_ideas}</div><div class="l">evidence-backed idea seeds</div></div>
     </div>
+    ${whatsNew(o)}
     <div class="grid g2">
       <div class="card"><h2>Highest opportunity</h2><div class="tw"><table><thead><tr><th>Topic</th><th>Signal</th><th class="num">Momentum</th><th>Score</th></tr></thead><tbody>${opps}</tbody></table></div></div>
       <div class="card"><h2>New &amp; rising vocabulary</h2><p class="small muted">Terms whose title frequency in ${ti.last} jumped against earlier years. Click a term to see its curve.</p>
@@ -140,6 +141,21 @@ radar serve</pre></div>`; return;
     </div>
     <p class="small muted" style="margin-top:18px">${ci.ami_vs_official_topics ? `Topic agreement with the venues’ own taxonomy (AMI) ${num(ci.ami_vs_official_topics, 3)}. ` : ""}${ci.title_agreement ? `Title-only papers placed by title (${Math.round(ci.title_agreement * 100)}% agreement with abstract placement); trend counts use title placement for every year.` : ""}</p>`;
 };
+
+function whatsNew(o) {
+  const ch = o.changes;
+  if (!ch || ch.first_run) return "";
+  const items = [];
+  (ch.new_releases || []).forEach((r) => items.push(`<li><b>New release:</b> ${esc(r.venue.toUpperCase())} ${r.year} — ${r.n.toLocaleString()} papers</li>`));
+  (ch.grown || []).slice(0, 4).forEach((r) => items.push(`<li>${esc(r.venue.toUpperCase())} ${r.year}: ${r.before.toLocaleString()} → ${r.n.toLocaleString()} papers</li>`));
+  (ch.new_topics || []).slice(0, 4).forEach((t) => items.push(`<li><b>New topic:</b> <a href="#/topic/${t.cluster}">${esc(t.label)}</a> (${t.size} papers)</li>`));
+  (ch.movers || []).slice(0, 5).forEach((t) => items.push(`<li><a href="#/topic/${t.cluster}">${esc(t.label)}</a>: opportunity ${Math.round(t.opportunity_before)} → <b>${Math.round(t.opportunity)}</b>${t.tag !== t.tag_before ? `, now ${tag(t.tag)}` : ""}</li>`));
+  if ((ch.new_terms || []).length) items.push(`<li><b>New terms:</b> ${ch.new_terms.slice(0, 10).map((x) => `<a href="#/terms?q=${encodeURIComponent(x)}">${esc(x)}</a>`).join(", ")}</li>`);
+  const tr = o.tracking && o.tracking.venues && o.tracking.venues.length ? `Tracking ${o.tracking.venues.map((v) => v.toUpperCase()).join(", ")}${o.tracking.arxiv ? " + arXiv" : ""}. ` : "";
+  return `<div class="card" style="margin-bottom:16px"><h2>What’s new <span class="muted small" style="font-weight:400">since ${esc(ch.since || "–")} · ${(ch.n_new_papers || 0).toLocaleString()} new papers</span></h2>
+    ${items.length ? `<ul style="margin:0;padding-left:18px">${items.join("")}</ul>` : `<p class="muted" style="margin:0">No meaningful changes in the last update (${esc(ch.date)}).</p>`}
+    <p class="small muted" style="margin:8px 0 0">${tr}Run <code>radar update</code> (or let the weekly schedule do it) to refresh.</p></div>`;
+}
 
 /* ----- landscape map ----- */
 pages.map = async () => {

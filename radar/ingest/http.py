@@ -31,10 +31,16 @@ class Client:
         raw = url + "?" + json.dumps(params or {}, sort_keys=True)
         return self.cache_dir / (hashlib.sha1(raw.encode()).hexdigest() + ".txt")
 
+    # Cached responses older than this (seconds) are fetched again. None = keep
+    # forever. Set per call-site: old years never change, the current one does.
+    max_age: float | None = None
+
     def get(self, url: str, params: dict | None = None, use_cache: bool = True) -> str:
         path = self._key(url, params)
         if use_cache and path.exists():
-            return path.read_text(encoding="utf-8")
+            fresh = self.max_age is None or (time.time() - path.stat().st_mtime) < self.max_age
+            if fresh:
+                return path.read_text(encoding="utf-8")
         delay = 2.0
         for attempt in range(self.max_retries):
             wait = self.min_interval - (time.monotonic() - self._last)

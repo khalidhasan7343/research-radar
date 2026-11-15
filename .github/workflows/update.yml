@@ -1,0 +1,115 @@
+# Weekly refresh: fetch new papers for every tracked venue + arXiv, re-run the
+# analysis, commit the updated database and reports, and open an issue with
+# "what's new" whenever new papers arrived (GitHub emails you about it).
+#
+# First run: Actions tab -> "Research Radar update" -> Run workflow, and fill
+# in the venues/years to start from. After that it runs every Monday.
+
+name: Research Radar update
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # Mondays 03:17 UTC (09:17 in Dhaka)
+  workflow_dispatch:
+    inputs:
+      venues:
+        description: "Venues to start tracking (only needed the first time), e.g. neurips,icml,iclr,cvpr,acl"
+        default: ""
+      years:
+        description: "Years to backfill for those venues, e.g. 2023-2025"
+        default: ""
+      sources:
+        description: "Sources: openalex, s2, openreview"
+        default: "openalex,openreview"
+      arxiv:
+        description: "arXiv categories to follow (optional), e.g. cs.LG,cs.CL,cs.CV"
+        default: ""
+      force:
+        description: "Re-analyse even if nothing new arrived"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: radar-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      RADAR_CONTACT_EMAIL: ${{ vars.RADAR_CONTACT_EMAIL }}
+      RADAR_S2_API_KEY: ${{ secrets.RADAR_S2_API_KEY }}
+      RADAR_EMBED_BACKEND: ${{ vars.RADAR_EMBED_BACKEND || 'tfidf' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Restore HTTP cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: radar-http-${{ github.run_id }}
+          restore-keys: radar-http-
+
+      - name: Restore database
+        run: |
+          mkdir -p data
+          if [ -f data/radar.db.gz ]; then gunzip -kf data/radar.db.gz; fi
+
+      - name: Backfill (manual runs with venues given)
+        if: ${{ github.event.inputs.venues != '' && github.event.inputs.years != '' }}
+        run: radar ingest venues --venues "${{ github.event.inputs.venues }}" --years "${{ github.event.inputs.years }}" --sources "${{ github.event.inputs.sources }}"
+
+      - name: Follow arXiv (manual runs)
+        if: ${{ github.event.inputs.arxiv != '' }}
+        run: radar track --arxiv "${{ github.event.inputs.arxiv }}"
+
+      - name: Update and analyse
+        run: |
+          radar update ${{ github.event.inputs.force == 'true' && '--force' || '' }} | tee update.log
+          radar report
+
+      - name: Commit results
+        id: commit
+        run: |
+          gzip -kf data/radar.db
+          git config user.name "research-radar-bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f data/radar.db.gz reports/
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "Research Radar update $(date -u +%Y-%m-%d)"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          python - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json
+          ch = json.load(open("reports/changes.json"))
+          print("new=" + str(ch.get("n_new_papers", 0)))
+          EOF
+
+      - name: Open an issue with what's new
+        if: ${{ steps.commit.outputs.new != '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --title "Research Radar: what's new ($(date -u +%Y-%m-%d))" --body-file reports/CHANGES.md
+
+      - name: Keep the trend report as a downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trend-report
+          path: reports/

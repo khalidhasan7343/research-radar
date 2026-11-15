@@ -102,7 +102,9 @@ def create_app(s: Settings) -> FastAPI:
         out = {"ready": st.ready, "summary": records(summ), "n_papers": int(summ.n.sum()) if len(summ) else 0,
                "llm": {"enabled": s.llm_enabled, "model": s.llm_model},
                "cluster_info": st.db.get_meta("cluster_info"), "trend_info": st.db.get_meta("trend_info"),
-               "last_run": st.db.get_meta("last_run"), "weights": st.db.get_meta("weights") or s.weights}
+               "last_run": st.db.get_meta("last_run"), "weights": st.db.get_meta("weights") or s.weights,
+               "changes": st.db.get_meta("changes"), "tracking": st.db.get_meta("tracking"),
+               "update_history": (st.db.get_meta("update_history") or [])[-12:]}
         if st.ready:
             tr = st.trends
             out["top_opportunity"] = records(tr.sort_values("opportunity", ascending=False).head(8))

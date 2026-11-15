@@ -19,8 +19,30 @@ def _client(s: Settings, name: str, interval: float, headers=None) -> Client:
     return Client(s.cache_dir / name, min_interval=interval, user_agent=ua, headers=headers)
 
 
+RECENT_MAX_AGE = 5 * 86400  # re-fetch the current and previous year at most every 5 days
+
+
+def get_tracking(db: DB) -> dict:
+    return db.get_meta("tracking", None) or {"venues": [], "sources": [], "from_year": None, "arxiv": None}
+
+
+def track(db: DB, venues=(), sources=(), from_year=None, arxiv_categories=None, untrack=()) -> dict:
+    """Remember what to keep up to date. `radar update` uses this."""
+    t = get_tracking(db)
+    t["venues"] = sorted((set(t["venues"]) | set(venues)) - set(untrack))
+    t["sources"] = sorted(set(t["sources"]) | set(sources))
+    if from_year:
+        t["from_year"] = min(from_year, t["from_year"] or from_year)
+    if arxiv_categories:
+        a = t.get("arxiv") or {"categories": [], "last_date": None}
+        a["categories"] = sorted(set(a["categories"]) | set(arxiv_categories))
+        t["arxiv"] = a
+    db.set_meta("tracking", t)
+    return t
+
+
 def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sources: list[str],
-                  limit: int = 0, log=print) -> dict:
+                  limit: int = 0, log=print, refresh_recent: bool = True, remember: bool = True) -> dict:
     """Fetch every (venue, year) from each requested source. A source that fails
     is reported and skipped; the others still run, and cross-source duplicates
     merge in the database."""
@@ -37,6 +59,9 @@ def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sour
             log(f"! unknown venue '{venue}' (known: {', '.join(VENUES)})")
             continue
         for year in years:
+            recent = year >= date.today().year - 1
+            for c in clients.values():
+                c.max_age = RECENT_MAX_AGE if (recent and refresh_recent) else None
             for src in sources:
                 try:
                     if src == "openalex":
@@ -55,14 +80,22 @@ def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sour
                     log(f"  {venue} {year} [{src}]: skipped ({str(e)[:160]})")
                 finally:
                     db.set_meta("openalex_sources", oa_cache)
+    if remember and not limit:
+        track(db, [v for v in venues if v in VENUES], sources, min(years) if years else None)
     return stats
 
 
 def ingest_arxiv(s: Settings, db: DB, start: date, end: date, categories=None,
                  max_per_window: int = 2000, log=print):
     client = _client(s, "arxiv", 3.1)  # arXiv asks for >= 3 s between calls
-    it = fetch_arxiv(client, categories or ARXIV_ML_CATEGORIES, start, end, max_per_window, log=log)
-    return db.upsert_papers(it, "arxiv")
+    client.max_age = RECENT_MAX_AGE  # the newest window keeps growing
+    cats = categories or ARXIV_ML_CATEGORIES
+    out = db.upsert_papers(fetch_arxiv(client, cats, start, end, max_per_window, log=log), "arxiv")
+    t = track(db, arxiv_categories=cats)
+    a = t["arxiv"]
+    a["last_date"] = max(filter(None, [a.get("last_date"), str(end)]))
+    db.set_meta("tracking", t)
+    return out
 
 
 def ingest_rtanalysis(db: DB, repo: Path):

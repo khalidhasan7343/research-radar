@@ -46,6 +46,18 @@ def main(argv=None):
     f.add_argument("--venue", default="")
     f.add_argument("--year", type=int, default=0)
 
+    up = sub.add_parser("update", help="fetch new papers for everything tracked, re-analyse, report what changed")
+    up.add_argument("--force", action="store_true", help="re-analyse even if no new papers arrived")
+    up.add_argument("--years-back", type=int, default=1, help="also re-check this many past years (default 1)")
+    up.add_argument("--out", default="reports")
+    tk = sub.add_parser("track", help="show or change what `radar update` keeps current")
+    tk.add_argument("--venues", default="")
+    tk.add_argument("--sources", default="")
+    tk.add_argument("--from-year", type=int)
+    tk.add_argument("--arxiv", default="", help="arXiv categories to follow, e.g. cs.LG,cs.CL")
+    tk.add_argument("--remove", default="", help="venues to stop tracking")
+    ch = sub.add_parser("changes", help="print what changed in the last update")
+
     sub.add_parser("venues", help="list known venues")
     sub.add_parser("status", help="corpus and analysis summary")
 
@@ -105,6 +117,26 @@ def main(argv=None):
             ins, mer = I.ingest_file(db, Path(args.path), args.venue, args.year)
             print(f"imported {ins:,} papers ({mer} merged)")
         print(db.summary().to_string(index=False))
+    elif args.cmd == "update":
+        from .update import changes_markdown, run_update
+
+        ch = run_update(s, db, force=args.force, years_back=args.years_back, out_dir=Path(args.out))
+        print("\n" + changes_markdown(ch))
+    elif args.cmd == "track":
+        from .ingest import get_tracking, track
+
+        sp = lambda x: [v.strip().lower() for v in x.split(",") if v.strip()]  # noqa: E731
+        if args.venues or args.sources or args.from_year or args.arxiv or args.remove:
+            track(db, sp(args.venues), sp(args.sources), args.from_year,
+                  [c.strip() for c in args.arxiv.split(",") if c.strip()] or None, sp(args.remove))
+        t = get_tracking(db)
+        print(f"venues:  {', '.join(t['venues']) or '(none)'}\nsources: {', '.join(t['sources']) or '(none)'}\n"
+              f"from:    {t['from_year']}\narXiv:   {t['arxiv'] or '(off)'}")
+    elif args.cmd == "changes":
+        from .update import changes_markdown
+
+        ch = db.get_meta("changes")
+        print(changes_markdown(ch) if ch else "No update has run yet.")
     elif args.cmd == "status":
         print(db.summary().to_string(index=False))
         for k in ("cluster_info", "trend_info", "last_run"):
@@ -118,8 +150,13 @@ def main(argv=None):
             stage_embed(s, db, force=True)
             if args.start == "embed":
                 args.start = "cluster"
+        from .update import _record, diff, snapshot
+
         only = [x.strip() for x in args.only.split(",") if x.strip()] or None
+        old = snapshot(db)
         pipeline.run(s, db, start=args.start, only=only)
+        if not only:
+            _record(db, diff(old, db), Path("reports"))
     elif args.cmd == "report":
         from .report import build_report
 

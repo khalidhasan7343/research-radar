@@ -47,6 +47,7 @@ There is also a CLI for everything, and a `TREND_REPORT.md`/`.html` you can shar
 | Gaps | open problems, position claims, transplants | + typed open problems (open question / limitation / missing evaluation / future work), statistically scored transplants with method growth, under-connected neighbouring topics |
 | Ideas | manual | generated seeds, novelty scoring calibrated against the corpus, tiered reading lists with no repeats, optional LLM refinement and critique |
 | Output | Markdown/PDF report | web dashboard + Markdown/HTML report + CLI |
+| Staying current | re-run by hand | `radar update` + weekly GitHub Actions job: detects new releases, re-analyses, and opens an issue saying what changed |
 
 ## Install
 
@@ -109,6 +110,63 @@ radar novelty "RL with verifiable rewards for probabilistic time-series forecast
 radar reading "test-time scaling for diffusion language models"
 radar reading --cluster 33
 ```
+
+## Staying up to date with new releases
+
+Every venue you ingest is **tracked** automatically. One command fetches what's
+new and tells you what changed:
+
+```bash
+radar update            # new papers for tracked venues + arXiv, re-analyse, write reports/CHANGES.md
+radar changes           # print the last "what's new"
+radar track             # show what is tracked
+radar track --venues cvpr,acl --sources openalex --from-year 2024 --arxiv cs.LG,cs.CL
+radar track --remove acl
+```
+
+`update` re-checks the current and previous year for each tracked venue.
+Proceedings trickle into OpenAlex and OpenReview over several weeks, so cached
+responses for recent years expire after 5 days, while older years are never
+re-downloaded. arXiv is pulled from the last date fetched. If nothing new
+arrived, the analysis is skipped. Otherwise you get:
+
+- **new releases**: venue-years that didn't exist before (e.g. *NeurIPS 2026 — 5,400 papers*)
+- **updated** venue-years whose counts grew
+- **new topics**: clusters made mostly of new papers, or of old papers regrouped in a new way
+- **biggest movers**: topics whose momentum, opportunity rank or signal changed (e.g. *cooling → niche gem*)
+- **new vocabulary** on the emerging-terms list
+
+These appear in `reports/CHANGES.md` and on the dashboard's Overview page.
+Topics are re-numbered whenever clustering re-runs, so old and new topics are
+matched by the papers they share.
+
+A venue-year that is still being indexed (fewer than half the previous year's
+papers) is left out of trend counts until it fills in. Otherwise a
+half-published conference would make all its topics look like they collapsed.
+The report lists any venue-year held back this way.
+
+### Automatic weekly updates (GitHub Actions)
+
+`.github/workflows/update.yml` runs `radar update` every Monday, commits the
+refreshed database (`data/radar.db.gz`, ~10 MB) and reports, and **opens an
+issue with the "what's new" summary whenever new papers arrive**. GitHub emails
+you about new issues, so you are notified of each release.
+
+1. Push this repo to GitHub.
+2. *Actions → Research Radar update → Run workflow*, and fill in the venues and
+   years to start from (e.g. `neurips,icml,iclr,cvpr,acl` and `2023-2025`).
+   Optional: arXiv categories.
+3. Optional: under *Settings → Secrets and variables → Actions*, set variable
+   `RADAR_CONTACT_EMAIL` (faster OpenAlex) and secret `RADAR_S2_API_KEY`.
+
+After that it runs weekly by itself. To look at the dashboard, `git pull`,
+`gunzip -k data/radar.db.gz`, `radar serve`.
+
+### Or on your own computer
+
+- Linux/macOS: `crontab -e` → `0 9 * * 1 cd /path/to/research-radar && radar update`
+- Windows: Task Scheduler → *Create Basic Task* → weekly → program `radar`,
+  arguments `update`, start in your project folder.
 
 ## Free LLM features (optional)
 
@@ -180,6 +238,7 @@ radar/
   terms.py       emerging / fading vocabulary
   gaps.py        open problems, position claims, transplants, under-connected topics
   ideas.py       semantic index, novelty, reading lists, idea seeds
+  update.py      tracked refresh, change detection ("what's new")
   llm.py         optional OpenAI-compatible LLM layer
   report.py      Markdown + HTML report
   server.py      FastAPI backend

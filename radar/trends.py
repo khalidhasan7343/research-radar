@@ -103,6 +103,16 @@ def compute_trends(df: pd.DataFrame, pc: pd.DataFrame, clusters: pd.DataFrame,
     conf = d[d.venue != "arxiv"]
     arx = d[d.venue == "arxiv"]
 
+    # Guard against half-published years: a venue-year with under half the
+    # previous year's papers is still being indexed. Counting it would make
+    # every topic at that venue look like it collapsed.
+    vy_all = conf.groupby(["venue", "year"]).size()
+    incomplete = [(v, int(y)) for (v, y), n in vy_all.items()
+                  if (v, y - 1) in vy_all.index and n < 0.5 * vy_all[(v, y - 1)]]
+    if incomplete:
+        bad = pd.MultiIndex.from_tuples(incomplete)
+        conf = conf[~pd.MultiIndex.from_arrays([conf.venue, conf.year]).isin(bad)]
+
     years = sorted(conf.year.unique())
     first, last = years[0], years[-1]
     vy = conf.groupby(["venue", "year"]).size()
@@ -235,5 +245,6 @@ def compute_trends(df: pd.DataFrame, pc: pd.DataFrame, clusters: pd.DataFrame,
     all_cy = conf.groupby(["cluster_trend", "year"]).size().rename("n_all").reset_index()
     all_cy.columns = ["cluster", "year", "n_all"]
     cy = cy.merge(all_cy, on=["cluster", "year"], how="left").fillna({"n_all": 0})
-    meta = {"years": [int(y) for y in years], "panel_venues": panel_venues, "first": int(first), "last": int(last)}
+    meta = {"years": [int(y) for y in years], "panel_venues": panel_venues, "first": int(first), "last": int(last),
+            "incomplete_venue_years": [f"{v} {y}" for v, y in incomplete]}
     return out, cy, meta
