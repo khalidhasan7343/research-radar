@@ -1,0 +1,25 @@
+# Copy to radar.toml. Every key can also be set as an env var: RADAR_<KEY>.
+data_dir = "data"
+contact_email = ""              # puts you in OpenAlex's faster "polite pool"
+
+embed_backend = "tfidf"         # tfidf | fastembed | sentence-transformers | ollama
+embed_model = ""                # e.g. "BAAI/bge-small-en-v1.5" for fastembed
+n_clusters = 0                  # 0 = automatic
+layout = "tsne"                 # tsne | umap | pca
+
+# Free local LLM via Ollama (https://ollama.com):  ollama pull qwen2.5:7b
+llm_base_url = ""               # "http://localhost:11434/v1"
+llm_model = ""                  # "qwen2.5:7b"
+llm_api_key = ""                # only for hosted free tiers (Groq, OpenRouter)
+
+s2_api_key = ""                 # optional Semantic Scholar key
+
+[weights]                       # opportunity score; also adjustable live in the dashboard
+momentum = 1.0
+acceleration = 0.5
+reward = 1.0
+impact = 0.75
+openness = 0.75
+low_competition = 0.5
+low_entry_cost = 0.75
+low_concentration = 0.5

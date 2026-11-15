@@ -1,0 +1,174 @@
+"""Tests: parsers against recorded API shapes, dedupe rules, metrics, and a
+small end-to-end run on a synthetic corpus (no network)."""
+from __future__ import annotations
+
+import json
+import random
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from radar.config import Settings
+from radar.db import DB
+from radar.ingest.sources import (parse_arxiv_feed, parse_openalex_work, parse_openreview_note, parse_s2_paper)
+from radar.text import normalize_title, openalex_abstract
+
+
+# ------------------------------------------------------------------ parsers
+def test_openalex_abstract_rebuild():
+    inv = {"Deep": [0], "nets": [1, 4], "are": [2], "fun": [3]}
+    assert openalex_abstract(inv) == "Deep nets are fun nets"
+
+
+def test_parse_openalex_work():
+    w = {"id": "https://openalex.org/W123", "title": "A Paper", "publication_year": 2024, "publication_date": "2024-07-01",
+         "abstract_inverted_index": {"Hello": [0], "world": [1]}, "cited_by_count": 17, "doi": "https://doi.org/10.1/x",
+         "authorships": [{"author": {"display_name": "Ada"}, "institutions": [{"display_name": "MIT"}]}],
+         "primary_location": {"landing_page_url": "https://x.org/p"},
+         "locations": [{"landing_page_url": "https://arxiv.org/abs/2401.00001v2"}], "ids": {}}
+    p = parse_openalex_work(w, "icml")
+    assert p["key"] == "openalex:W123" and p["abstract"] == "Hello world" and p["citations"] == 17
+    assert p["authors"] == ["Ada"] and p["institutions"] == ["MIT"] and p["arxiv_id"] == "2401.00001" and p["doi"] == "10.1/x"
+
+
+def test_parse_s2_and_openreview():
+    p = parse_s2_paper({"paperId": "abc", "title": "T", "abstract": None, "authors": [{"name": "B"}], "year": 2025,
+                        "citationCount": 3, "externalIds": {"ArXiv": "2501.1"}}, "neurips")
+    assert p["key"] == "s2:abc" and p["abstract"] == "" and p["arxiv_id"] == "2501.1"
+    n = {"id": "xyz", "content": {"title": {"value": "Position: X"}, "abstract": {"value": "A"},
+                                   "authors": {"value": ["C"]}, "venue": {"value": "ICLR 2025 Oral"}}}
+    r = parse_openreview_note(n, "iclr", 2025)
+    assert r["presentation"] == "oral" and r["paper_type"] == "position"
+    n["content"]["venue"] = {"value": "Submitted to ICLR 2025"}
+    assert parse_openreview_note(n, "iclr", 2025) is None
+
+
+def test_parse_arxiv_feed():
+    xml = """<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry>
+    <id>http://arxiv.org/abs/2501.01234v3</id><published>2025-01-03T00:00:00Z</published>
+    <title>  Some
+     Title</title><summary>Abs text.</summary><author><name>D E</name></author>
+    <category term="cs.LG"/><category term="cs.AI"/></entry></feed>"""
+    (p,) = parse_arxiv_feed(xml)
+    assert p["arxiv_id"] == "2501.01234" and p["title"] == "Some Title" and p["year"] == 2025 and p["topic"] == "cs.LG,cs.AI"
+
+
+# ------------------------------------------------------------------- dedupe
+def test_merge_rules(tmp_path):
+    db = DB(tmp_path / "t.db")
+    db.upsert_papers([{"key": "a", "title": "Great Paper!", "venue": "arxiv", "year": 2023, "abstract": "short"}], "arxiv")
+    # venue version next year merges into the preprint and takes over venue/year
+    ins, mer = db.upsert_papers([{"key": "b", "title": "Great paper", "venue": "icml", "year": 2024,
+                                  "abstract": "a much longer abstract", "citations": 5}], "openalex")
+    assert (ins, mer) == (0, 1)
+    p = db.papers().iloc[0]
+    assert p.venue == "icml" and p.year == 2024 and p.citations == 5 and "longer" in p.abstract
+    assert set(p.sources) == {"arxiv", "openalex"}
+    # two venues in adjacent years never merge
+    ins, _ = db.upsert_papers([{"key": "c", "title": "Great paper", "venue": "iclr", "year": 2025}], "x")
+    assert ins == 1
+
+
+def test_normalize_title():
+    assert normalize_title("Café: The (Über) Model!") == "cafe the uber model"
+
+
+# ------------------------------------------------------------- end-to-end
+TOPICS = {
+    "diffusion": ("diffusion model image generation denoising score sampling", 1.0),
+    "agents": ("llm agent tool use planning web agent benchmark", 3.0),  # growing
+    "graphs": ("graph neural network node classification message passing", 0.4),  # shrinking
+    "bandits": ("bandit regret bound online learning exploration theorem", 1.0),
+}
+
+
+def _corpus(n_per_year=600, seed=0):
+    rnd = random.Random(seed)
+    rows = []
+    for year, scale in ((2023, 0.0), (2024, 0.5), (2025, 1.0)):
+        weights = {t: (1 - scale) + scale * g for t, (_, g) in TOPICS.items()}
+        tot = sum(weights.values())
+        for i in range(n_per_year):
+            t = rnd.choices(list(weights), [w / tot for w in weights.values()])[0]
+            words = TOPICS[t][0].split()
+            title = " ".join(rnd.sample(words, 4)) + f" {t} study {i}"
+            abstract = " ".join(rnd.choices(words, k=60)) + (" this remains an open question ." if rnd.random() < .2 else "")
+            rows.append({"key": f"{year}-{i}", "title": title, "venue": "conf", "year": year,
+                         "abstract": abstract if year == 2025 else "",
+                         "presentation": ("oral" if rnd.random() < (0.15 if t == "bandits" else 0.04) else "poster") if year == 2025 else "",
+                         "authors": [f"author{rnd.randint(0, 80)}" for _ in range(3)]})
+    return rows
+
+
+@pytest.fixture(scope="module")
+def analysed(tmp_path_factory):
+    from radar import pipeline
+
+    d = tmp_path_factory.mktemp("radar")
+    s = Settings(data_dir=d, layout="pca", n_clusters=4, embed_dim=32)
+    s.ensure_dirs()
+    db = DB(s.db_path)
+    db.upsert_papers(_corpus(), "synthetic")
+    pipeline.run(s, db, log=lambda *_: None)
+    return s, db
+
+
+def test_pipeline_finds_trends(analysed):
+    s, db = analysed
+    tr = db.read_table("trends")
+    assert len(tr) == 4
+    # map each cluster to the ground-truth topic most of its papers came from
+    pc = db.read_table("paper_cluster").merge(db.papers()[["key", "title"]], on="key")
+    pc["truth"] = pc.title.str.extract(r" (\w+) study \d+$")[0]
+    truth = pc.groupby("cluster").truth.agg(lambda s: s.value_counts().index[0])
+    assert truth.nunique() == 4
+    mom = {truth[c]: m for c, m in zip(tr.cluster, tr.momentum)}
+    assert mom["agents"] > 1.5 and mom["graphs"] < 0.8
+    rew = {truth[c]: r for c, r in zip(tr.cluster, tr.reward_lift)}
+    assert rew["bandits"] == max(rew.values())
+    assert tr.opportunity.between(0, 100).all()
+
+
+def test_pipeline_outputs(analysed):
+    s, db = analysed
+    assert len(db.read_table("open_problems")) > 0
+    assert db.read_table("paper_cluster").cluster.min() >= 0  # nobody discarded as noise
+    terms = db.read_table("terms")
+    assert len(terms) and "status" in terms
+
+
+def test_novelty_and_reading(analysed):
+    from radar.ideas import Index, reading_list
+
+    s, db = analysed
+    ix = Index(s, db.papers(), db.read_table("paper_cluster"), np.load(s.emb_dir / "centroids.npy"))
+    near = ix.novelty("llm agent tool use planning benchmark")
+    far = ix.novelty("protein folding with cryo electron microscopy")
+    assert near["novelty"] <= far["novelty"]
+    rl = reading_list(ix, "graph neural network message passing")
+    keys = [k for df in rl["tiers"].values() for k in df.key]
+    assert len(keys) == len(set(keys))  # no paper in two tiers
+
+
+def test_server(analysed):
+    from fastapi.testclient import TestClient
+
+    from radar.server import create_app
+
+    s, db = analysed
+    c = TestClient(create_app(s))
+    assert c.get("/api/overview").json()["ready"]
+    assert len(c.get("/api/topics").json()["topics"]) == 4
+    assert c.get("/api/topics/0").status_code == 200
+    assert c.post("/api/novelty", json={"text": "bandit regret bounds for online exploration"}).json()["neighbours"]
+    assert c.post("/api/rescore", json={"weights": {"momentum": 1}}).status_code == 200
+    assert c.get("/").status_code == 200
+
+
+def test_report(analysed, tmp_path):
+    from radar.report import build_report
+
+    s, db = analysed
+    md, ht = build_report(db, tmp_path)
+    assert "Highest opportunity" in md.read_text() and ht.read_text().startswith("<!DOCTYPE html>")

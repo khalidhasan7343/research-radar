@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Research Radar</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<aside class="side">
+  <div class="brand"><span class="dot"></span>Research&nbsp;Radar</div>
+  <nav>
+    <a href="#/" data-r="">Overview</a>
+    <a href="#/map" data-r="map">Landscape map</a>
+    <a href="#/topics" data-r="topics">Topics &amp; scores</a>
+    <a href="#/terms" data-r="terms">Emerging terms</a>
+    <a href="#/gaps" data-r="gaps">Gaps &amp; transplants</a>
+    <a href="#/ideas" data-r="ideas">Ideas</a>
+    <a href="#/lab" data-r="lab">Idea lab</a>
+    <a href="#/search" data-r="search">Search</a>
+  </nav>
+  <div class="side-foot" id="side-foot"></div>
+</aside>
+<main id="main"><div class="loading">Loading…</div></main>
+<div id="drawer" class="drawer" aria-hidden="true">
+  <button class="close" onclick="closeDrawer()" aria-label="Close">×</button>
+  <div id="drawer-body"></div>
+</div>
+<div id="tip" class="tip" role="tooltip"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
