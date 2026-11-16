@@ -85,7 +85,10 @@ def build_report(db: DB, out_dir: Path, top: int = 15) -> tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     summ = db.summary()
     tr = db.read_table("trends")
-    ci = db.get_meta("cluster_info", {}) or {}
+    if tr.empty or "opportunity" not in tr:
+        raise SystemExit("No analysis results yet, so there is nothing to report. Ingest papers and run "
+                         "`radar analyze` (or `radar update`) first.")
+    ci =db.get_meta("cluster_info", {}) or {}
     ti = db.get_meta("trend_info", {}) or {}
     w = db.get_meta("weights", {}) or {}
     d = Doc()

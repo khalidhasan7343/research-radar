@@ -96,8 +96,24 @@ jobs:
         if: ${{ steps.db.outputs.exists != 'true' && github.event.inputs.arxiv == '' && vars.RADAR_ARXIV != '' }}
         run: radar track --arxiv "${{ vars.RADAR_ARXIV }}"
 
-      - name: Update and analyse
+      - name: Check that something is tracked
+        id: track
         run: |
+          python - <<'EOF' >> "$GITHUB_OUTPUT"
+          from radar.config import load_settings
+          from radar.db import DB
+          from radar.ingest import get_tracking
+          t = get_tracking(DB(load_settings().db_path))
+          print("ready=" + ("true" if t["venues"] or t.get("arxiv") else "false"))
+          EOF
+          if grep -q "ready=false" "$GITHUB_OUTPUT"; then
+            echo "::warning title=Nothing tracked yet::Run this workflow manually with venues and years filled in, or set the repository variables RADAR_VENUES and RADAR_YEARS (e.g. neurips,icml,iclr and 2023-2025). Skipping this run."
+          fi
+
+      - name: Update and analyse
+        if: ${{ steps.track.outputs.ready == 'true' }}
+        run: |
+          set -o pipefail
           radar update ${{ github.event.inputs.force == 'true' && '--force' || '' }} | tee update.log
           radar report
 
@@ -110,6 +126,7 @@ jobs:
 
       - name: Commit reports
         id: commit
+        if: ${{ steps.track.outputs.ready == 'true' }}
         run: |
           git config user.name "research-radar-bot"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -128,13 +145,14 @@ jobs:
           EOF
 
       - name: Open an issue with what's new
-        if: ${{ steps.commit.outputs.new != '0' }}
+        if: ${{ steps.track.outputs.ready == 'true' && steps.commit.outputs.new != '0' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh issue create --title "Research Radar: what's new ($(date -u +%Y-%m-%d))" --body-file reports/CHANGES.md
 
       - name: Keep the trend report as a downloadable artifact
+        if: ${{ steps.track.outputs.ready == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: trend-report
