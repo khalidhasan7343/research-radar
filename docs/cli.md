@@ -76,7 +76,7 @@ options:
 | --- | --- | --- |
 | `--venues` | required | Keys from `radar venues`. Unknown keys are reported and skipped. |
 | `--years` | required | Ranges and lists can be combined: `2019,2022-2025`. |
-| `--sources` | `openalex,openreview` | `openalex`, `s2` (Semantic Scholar), `openreview`. OpenReview is skipped for venues that do not use it. |
+| `--sources` | `s2,openalex` | `s2` (Semantic Scholar), `openalex`, `openreview`. OpenReview is opt-in: it currently blocks anonymous API clients with a 403 bot challenge, and is skipped for venues that do not use it. |
 | `--limit` | `0` (no limit) | Fetch at most this many papers per venue, year and source. Limited ingests are **not** added to tracking. |
 
 A source that fails (for example, OpenReview returning HTTP 403) is reported and
@@ -84,7 +84,7 @@ skipped; the other sources still run. Venues ingested without `--limit` are
 tracked for `radar update`.
 
 ```bash
-radar ingest venues --venues neurips,icml,iclr --years 2022-2025 --sources openalex,openreview
+radar ingest venues --venues neurips,icml,iclr --years 2022-2025 --sources s2,openalex
 radar ingest venues --venues cvpr,acl --years 2024,2025 --sources openalex,s2
 radar ingest venues --venues iclr --years 2025 --limit 50     # quick test
 ```

@@ -136,7 +136,7 @@ def run_update(s: Settings, db: DB, force: bool = False, years_back: int = 1, ou
     t = get_tracking(db)
     if not t["venues"] and not t.get("arxiv"):
         raise SystemExit("Nothing is tracked yet. Ingest something first (it is tracked automatically), or run\n"
-                         "  radar track --venues neurips,icml,iclr --sources openalex,openreview --from-year 2023")
+                         "  radar track --venues neurips,icml,iclr --sources s2,openalex --from-year 2023")
     before = db.count()
     old = snapshot(db)
     this = date.today().year

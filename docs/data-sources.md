@@ -89,8 +89,10 @@ official limits, which you should check in their documentation.
   venue string (oral, spotlight, poster), and titles starting with "Position:"
   are marked as position papers.
 - Interval: 0.5 s.
-- Caveat: OpenReview sometimes answers scripts with an HTTP 403 challenge. When
-  that happens the source is skipped and the others still run. Without OpenReview
+- Caveat: as of November 2026, OpenReview answers anonymous API clients with an
+  HTTP 403 "Challenge verification required". The first refusal is reported
+  once and OpenReview is skipped for the rest of the run; the other sources
+  still run. This is why OpenReview is no longer a default source. Without it
   (or the RTanalysis import), reward lift has no data.
 
 ## arXiv

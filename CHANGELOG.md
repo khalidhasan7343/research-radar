@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- Coverage warnings in `radar status` and after `radar ingest`. They flag
+  tracked venues with no papers, venue-years that look partial (`--limit`
+  fetches or not yet indexed), years with few abstracts, a corpus with no
+  oral/spotlight data, and arXiv outnumbering conference papers.
+- `docs/user-manual.md`: a one-page guide to everyday use.
+- Ingest warns when a source returns no papers for a venue-year.
+
+### Changed
+
+- The default ingest sources are now `s2,openalex` (CLI, `radar update` hint
+  and the GitHub Actions workflow). OpenReview now answers anonymous API
+  clients with an HTTP 403 bot challenge, so it is opt-in. On a 401/403 a source
+  is reported once and skipped for the rest of the run, instead of failing once
+  per venue-year.
+- README rewritten: who it is for, a three-step quickstart, dashboard and data
+  source tables, and a link to the user manual.
+
 ### Fixed
 
 - Openness counted open-problem papers from arXiv and from held-back venue-years

@@ -21,6 +21,16 @@ def _years(spec: str) -> list[int]:
     return out
 
 
+def _print_warnings(db: DB) -> None:
+    from .ingest import get_tracking
+
+    w = db.coverage_warnings(get_tracking(db)["venues"])
+    if w:
+        print("\nCoverage warnings:")
+        for line in w:
+            print(f"  ! {line}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="radar", description="Research Radar: map a research field and find openings.")
     ap.add_argument("--data", help="data directory (default ./data)")
@@ -32,7 +42,8 @@ def main(argv=None):
     v = isub.add_parser("venues", help="fetch venue papers from OpenAlex / Semantic Scholar / OpenReview")
     v.add_argument("--venues", required=True, help="comma list, e.g. neurips,icml,iclr,cvpr,acl  (see `radar venues`)")
     v.add_argument("--years", required=True, help="e.g. 2023-2025 or 2024,2025")
-    v.add_argument("--sources", default="openalex,openreview", help="comma list of openalex,s2,openreview")
+    v.add_argument("--sources", default="s2,openalex",
+                   help="comma list of s2,openalex,openreview (OpenReview blocks anonymous clients; opt-in)")
     v.add_argument("--limit", type=int, default=0, help="max papers per venue-year-source (testing)")
     a = isub.add_parser("arxiv", help="fetch recent arXiv preprints (leading indicator)")
     a.add_argument("--start", required=True, help="YYYY-MM-DD")
@@ -117,6 +128,7 @@ def main(argv=None):
             ins, mer = I.ingest_file(db, Path(args.path), args.venue, args.year)
             print(f"imported {ins:,} papers ({mer} merged)")
         print(db.summary().to_string(index=False))
+        _print_warnings(db)
     elif args.cmd == "update":
         from .update import changes_markdown, run_update
 
@@ -139,6 +151,7 @@ def main(argv=None):
         print(changes_markdown(ch) if ch else "No update has run yet.")
     elif args.cmd == "status":
         print(db.summary().to_string(index=False))
+        _print_warnings(db)
         for k in ("cluster_info", "trend_info", "last_run"):
             print(k, "=", db.get_meta(k))
     elif args.cmd == "analyze":

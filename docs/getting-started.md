@@ -54,7 +54,7 @@ Start small. `--limit` fetches at most that many papers per venue, year and
 source, which is enough to see the whole pipeline work:
 
 ```bash
-radar ingest venues --venues iclr --years 2024-2025 --sources openalex,openreview --limit 300
+radar ingest venues --venues iclr --years 2024-2025 --sources s2,openalex --limit 300
 ```
 
 When that works, fetch the real thing. Full venue-years take much longer
@@ -62,7 +62,7 @@ because requests are rate-limited; every response is cached in `data/cache/`,
 so an interrupted crawl resumes where it stopped.
 
 ```bash
-radar ingest venues --venues neurips,icml,iclr --years 2022-2025 --sources openalex,openreview
+radar ingest venues --venues neurips,icml,iclr --years 2022-2025 --sources s2,openalex
 radar ingest arxiv --start 2025-06-01 --categories cs.LG,cs.CL   # optional: recent preprints
 ```
 

@@ -155,6 +155,37 @@ class DB:
                 c,
             )
 
+    def coverage_warnings(self, tracked_venues=()) -> list[str]:
+        """Plain-language warnings about a corpus too thin to trust. Silent gaps
+        (a test fetch with --limit, a source that refused access) otherwise only
+        show up as odd numbers in the dashboard."""
+        df = self.summary()
+        out = []
+        conf = df[df.venue != "arxiv"]
+        for v in sorted(set(tracked_venues) - set(conf.venue)):
+            out.append(f"{v}: tracked but has no papers. Run `radar ingest venues --venues {v} ...`.")
+        for venue, g in conf.groupby("venue"):
+            peak = g.n.max()
+            for r in g.itertuples():
+                if r.n < 150:
+                    out.append(f"{venue} {r.year}: only {r.n} papers. Either a test fetch (--limit) or the "
+                               f"proceedings are not indexed yet; re-ingest without --limit, or wait and run "
+                               f"`radar update`.")
+                elif r.n < 0.4 * peak:
+                    out.append(f"{venue} {r.year}: {r.n} papers vs {peak} in its largest year; "
+                               f"probably incomplete (or still being indexed).")
+                if r.n >= 150 and r.with_abstract < 0.5 * r.n:
+                    out.append(f"{venue} {r.year}: only {r.with_abstract}/{r.n} papers have abstracts; "
+                               f"topics will lean on titles for this year (abstracts often fill in later).")
+        if len(conf) and conf.highlighted.sum() == 0:
+            out.append("No oral/spotlight decisions in the corpus, so reward lift is unavailable "
+                       "(needs OpenReview or the RTanalysis import).")
+        n_conf, n_arx = int(conf.n.sum()), int(df[df.venue == "arxiv"].n.sum())
+        if n_arx and n_arx > n_conf:
+            out.append(f"arXiv ({n_arx:,}) outnumbers conference papers ({n_conf:,}); topics will mostly "
+                       f"reflect arXiv while trend scores use conference papers only.")
+        return out
+
     # ---------------------------------------------------------- analysis tables
     def write_table(self, name: str, df: pd.DataFrame) -> None:
         df = df.copy()

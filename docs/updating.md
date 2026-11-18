@@ -44,7 +44,7 @@ If nothing is tracked, it stops with:
 
 ```text
 Nothing is tracked yet. Ingest something first (it is tracked automatically), or run
-  radar track --venues neurips,icml,iclr --sources openalex,openreview --from-year 2023
+  radar track --venues neurips,icml,iclr --sources s2,openalex --from-year 2023
 ```
 
 `radar changes` prints the last summary again. The dashboard shows it on the
@@ -115,7 +115,7 @@ need to start it again by hand.
    | --- | --- | --- | --- |
    | Variable | `RADAR_VENUES` | recommended | Venues to rebuild from if the cache is lost, e.g. `neurips,icml,iclr` |
    | Variable | `RADAR_YEARS` | recommended | Years to rebuild, e.g. `2023-2025` |
-   | Variable | `RADAR_SOURCES` | optional | Sources for the rebuild; default `openalex,openreview` |
+   | Variable | `RADAR_SOURCES` | optional | Sources for the rebuild; default `s2,openalex` |
    | Variable | `RADAR_ARXIV` | optional | arXiv categories to follow after a rebuild, e.g. `cs.LG,cs.CL` |
    | Variable | `RADAR_CONTACT_EMAIL` | optional | Your contact email for the OpenAlex polite pool (see [data-sources.md](data-sources.md)) |
    | Variable | `RADAR_EMBED_BACKEND` | optional | Embedding backend; default `tfidf` |

@@ -31,7 +31,7 @@ on:
         default: ""
       sources:
         description: "Sources: openalex, s2, openreview"
-        default: "openalex,openreview"
+        default: "s2,openalex"
       arxiv:
         description: "arXiv categories to follow (optional), e.g. cs.LG,cs.CL,cs.CV"
         default: ""
@@ -86,7 +86,7 @@ jobs:
 
       - name: Rebuild from repository variables (no cached database)
         if: ${{ steps.db.outputs.exists != 'true' && github.event.inputs.venues == '' && vars.RADAR_VENUES != '' && vars.RADAR_YEARS != '' }}
-        run: radar ingest venues --venues "${{ vars.RADAR_VENUES }}" --years "${{ vars.RADAR_YEARS }}" --sources "${{ vars.RADAR_SOURCES || 'openalex,openreview' }}"
+        run: radar ingest venues --venues "${{ vars.RADAR_VENUES }}" --years "${{ vars.RADAR_YEARS }}" --sources "${{ vars.RADAR_SOURCES || 's2,openalex' }}"
 
       - name: Follow arXiv (manual runs)
         if: ${{ github.event.inputs.arxiv != '' }}

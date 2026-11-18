@@ -61,6 +61,7 @@ def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sour
                       {"x-api-key": s.s2_api_key} if s.s2_api_key else None),
         "openreview": _client(s, "openreview", 0.5),
     }
+    blocked: set[str] = set()  # sources that refused this run (e.g. a bot challenge): not retried
     for venue in venues:
         if venue not in VENUES:
             log(f"! unknown venue '{venue}' (known: {', '.join(VENUES)})")
@@ -70,6 +71,8 @@ def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sour
             for c in clients.values():
                 c.max_age = RECENT_MAX_AGE if (recent and refresh_recent) else None
             for src in sources:
+                if src in blocked:
+                    continue
                 try:
                     if src == "openalex":
                         it = fetch_openalex(clients[src], venue, year, oa_cache, limit, log)
@@ -83,8 +86,20 @@ def ingest_venues(s: Settings, db: DB, venues: list[str], years: list[int], sour
                     ins, mer = db.upsert_papers(it, src)
                     stats[(venue, year, src)] = (ins, mer)
                     log(f"  {venue} {year} [{src}]: +{ins} new, {mer} merged")
+                    not_applicable = src == "openreview" and not VENUES[venue].get("openreview")
+                    if ins + mer == 0 and not not_applicable:
+                        log(f"  ! {venue} {year} [{src}] returned no papers (not indexed yet, or the source "
+                            f"names this venue differently)")
                 except HttpError as e:
-                    log(f"  {venue} {year} [{src}]: skipped ({str(e)[:160]})")
+                    msg = str(e)
+                    if "ChallengeRequired" in msg or "HTTP 401" in msg or "HTTP 403" in msg:
+                        blocked.add(src)
+                        log(f"  ! {src} refused access (HTTP 401/403{', bot challenge' if 'Challenge' in msg else ''}); "
+                            f"skipping {src} for the rest of this run. "
+                            + ("OpenReview no longer serves anonymous API clients; use --sources s2,openalex."
+                               if src == "openreview" else "Check your API key or try again later."))
+                    else:
+                        log(f"  {venue} {year} [{src}]: skipped ({msg[:160]})")
                 finally:
                     db.set_meta("openalex_sources", oa_cache)
     if remember and not limit:

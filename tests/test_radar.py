@@ -70,6 +70,18 @@ def test_merge_rules(tmp_path):
     assert ins == 1
 
 
+def test_coverage_warnings(tmp_path):
+    db = DB(tmp_path / "t.db")
+    rows = [{"key": f"i{y}-{k}", "title": f"Paper {y} {k}", "venue": "icml", "year": y,
+             "abstract": "x" * 200} for y, n in ((2024, 400), (2025, 90)) for k in range(n)]
+    rows += [{"key": f"a{k}", "title": f"Preprint {k}", "venue": "arxiv", "year": 2025} for k in range(600)]
+    db.upsert_papers(rows, "s2")
+    w = " | ".join(db.coverage_warnings(["icml", "iclr"]))
+    assert "iclr: tracked but has no papers" in w
+    assert "icml 2025: only 90 papers" in w and "icml 2024" not in w
+    assert "reward lift is unavailable" in w and "arXiv (600) outnumbers" in w
+
+
 def test_topic_source_prefers_official_taxonomy(tmp_path):
     db = DB(tmp_path / "t.db")
     db.upsert_papers([{"key": "a", "title": "Some Paper", "venue": "iclr", "year": 2025,
